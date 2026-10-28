@@ -16,9 +16,10 @@ const LEGEND: Record<Kind, { query: string; swatch: string }> = {
   host: { query: "hosts", swatch: "rounded-full bg-sage" },
   port: { query: "ports", swatch: "rounded-full border border-bone bg-transparent" },
   soft: { query: "software", swatch: "rounded-sm bg-clay" },
+  file: { query: "files", swatch: "rounded-sm bg-bone" },
 };
 
-const KIND_ORDER: readonly Kind[] = ["post", "craft", "signal", "person", "net", "host", "port", "soft"];
+const KIND_ORDER: readonly Kind[] = ["post", "craft", "signal", "person", "net", "host", "port", "soft", "file"];
 
 function Home() {
   const graphRef = useRef<ForceGraphHandle>(null);
@@ -231,7 +232,7 @@ function Home() {
             <input
               ref={fileRef}
               type="file"
-              accept=".nmap,.xml,.csv,.gnmap,.txt,text/csv,text/xml,application/xml"
+              accept=".nmap,.xml,.csv,.gnmap,.txt,.json,text/csv,text/xml,application/xml,application/json"
               className="sr-only"
               onChange={(event) => {
                 const file = event.target.files?.[0];
@@ -382,7 +383,7 @@ function Home() {
       {dragOver ? (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center p-6">
           <p className="rounded-2xl border border-brass bg-panel px-5 py-4 text-center text-bone">
-            Drop a .nmap, .xml, or .csv
+            Drop a .nmap, .xml, .csv, or scanner .json
           </p>
         </div>
       ) : null}

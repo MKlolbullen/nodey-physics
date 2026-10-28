@@ -24,6 +24,7 @@ The same chart on a phone. Drag a node, drag empty space to pan, pinch to zoom.
 | Host | exposes | Port | An open port, labeled `22/tcp` |
 | Port | runs | Software | Product and version, or the service name when the banner is thin |
 | Host | runs | Software | Operating system, kept separate from the service of the same name |
+| Port | serves | File | A `.js`, `.json`, `.map`, `.chunk`, or `.ts` file the crawl found. The same path on two hosts is one node |
 
 Closed and filtered ports are not drawn. A down host with no open port is left out. Two banners that differ only by a package suffix (`OpenSSH 8.9p1 Ubuntu 4ubuntu0.1` and `…4ubuntu0.5`) collapse to `OpenSSH 8.9p1`.
 
@@ -34,11 +35,12 @@ On a large file the chart keeps the 120 hosts with the most open ports. Past 100
 | Kind | Drawn as | Facts |
 |---|---|---|
 | Network | Hexagon | Prefix, host count |
-| Host | Disc | Address, latency, MAC and vendor, OS, hop count, open-port count |
+| Host | Disc | Address, latency, MAC and vendor, OS, hop count, open-port count, PTR, page title |
 | Port | Ring | State, service name, banner |
 | Software | Triangle | `OS` or `Software`, and how many hosts share it |
+| File | Page | Extension, and how many hosts serve that path |
 
-A host is labeled with its name when the scan has one, and the address is a fact, so searching the IP still finds it. The legend filters are **Networks**, **Hosts**, **Ports**, and **Software**.
+A host is labeled with its name when the scan has one, and the address is a fact, so searching the IP still finds it. The legend filters are **Networks**, **Hosts**, **Ports**, **Software**, and, after a scanner report, **Files**.
 
 ## What import reads today
 
@@ -50,8 +52,28 @@ A host is labeled with its name when the scan has one, and the address is a fact
 | Masscan XML | Same host / address / port shape as Nmap XML |
 | CSV | A header with `ip` or `address`, plus `port`, `protocol`, `state`, `service`, `product`, `version`, `os`, `hostname`, `mac` when you have them. Semicolons and tabs are fine |
 | IP list | One address per line |
+| Meridian JSON | `scanner/meridian.py`. This is the report that also carries DNS, crawled pages, and script files |
 
 **Import** or drop the file on the chart. **Sample** loads the lab scan in the pictures. **Story** returns to the original chart. Nothing is uploaded.
+
+## Scanner
+
+```text
+python3 scanner/meridian.py
+```
+
+It asks for one target. A CIDR (`10.0.0.0/24`), a range (`10.0.0.1-10.0.0.40` or `10.0.0.1-40`), or a hostname. A target on the command line runs once. With no argument it keeps asking.
+
+Then, in order, and not before the previous step finishes:
+
+1. **Host scan.** TCP connect to a short port list. An open port marks the host up and keeps the banner (`nginx/1.24.0`, `OpenSSH_8.9p1`).
+2. **DNS.** PTR for live addresses, then A, AAAA, CNAME, MX, NS, and TXT for a hostname, then a short label list (`www`, `api`, `vpn`, …) under that name only. A range does not get subdomain guesses. Wildcard DNS stops the list.
+3. **Crawling.** HTTP and HTTPS on the ports from step 1. Same host and port only, two hops, twenty pages per origin.
+4. **Script and data files.** From those pages, then from the files themselves: `.js`, `.json`, `.map`, `.chunk`, `.ts`. A source map named by a script is fetched. Nothing off the host that was crawled.
+
+It writes `meridian-<target>.json` and `.csv` in the current directory. Drop the JSON on the chart. The CSV is the host and port table, which the chart can also import. The cap is 512 addresses. Link-local and metadata addresses are skipped. The scanner does not call Shodan or the other APIs, and it does not leave the machine.
+
+Only point it at hosts you are allowed to test.
 
 ## Tools that complement the same graph
 
@@ -75,6 +97,6 @@ These sources are complements. The chart does not call Shodan, Censys, VirusTota
 
 ```text
 prefix  --holds-->   host  --exposes-->  port  --runs-->  software
-                      |                                    |
-                      +--runs--> os                         +--has--> vulnerability
+                      |                     |                |
+                      +--runs--> os         +--serves--> file  +--has--> vulnerability
 ```

@@ -93,6 +93,7 @@ function kindColor(kind: Kind, pal: Palette) {
   if (kind === "post" || kind === "net") return pal.brass;
   if (kind === "craft" || kind === "host") return pal.sage;
   if (kind === "person" || kind === "soft") return pal.clay;
+  if (kind === "file") return pal.bone;
   return pal.bone;
 }
 
@@ -303,6 +304,16 @@ function drawShape(ctx: CanvasRenderingContext2D, n: SimNode) {
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
+    ctx.closePath();
+    return;
+  }
+  if (n.kind === "file") {
+    const s = r * 0.86;
+    ctx.moveTo(n.x - s, n.y - s);
+    ctx.lineTo(n.x + s * 0.42, n.y - s);
+    ctx.lineTo(n.x + s, n.y - s * 0.42);
+    ctx.lineTo(n.x + s, n.y + s);
+    ctx.lineTo(n.x - s, n.y + s);
     ctx.closePath();
     return;
   }
