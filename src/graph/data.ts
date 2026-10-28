@@ -1,4 +1,4 @@
-export type Kind = "post" | "craft" | "signal" | "person";
+export type Kind = "post" | "craft" | "signal" | "person" | "net" | "host" | "port" | "soft";
 
 export type GraphNode = {
   id: string;
@@ -21,6 +21,10 @@ export const KIND_LABEL: Record<Kind, string> = {
   craft: "Craft",
   signal: "Signals",
   person: "People",
+  net: "Networks",
+  host: "Hosts",
+  port: "Ports",
+  soft: "Software",
 };
 
 function node(
@@ -162,16 +166,42 @@ export const EDGES: readonly GraphEdge[] = TIES.map(([source, target, label], i)
   label,
 }));
 
-export const NODE_BY_ID: ReadonlyMap<string, GraphNode> = new Map(NODES.map((n) => [n.id, n]));
+export type Chart = {
+  id: string;
+  kicker: string;
+  blurb: string;
+  nodes: readonly GraphNode[];
+  edges: readonly GraphEdge[];
+  byId: ReadonlyMap<string, GraphNode>;
+  degree: ReadonlyMap<string, number>;
+};
 
-export const DEGREE: ReadonlyMap<string, number> = (() => {
+export function indexChart(input: {
+  id: string;
+  kicker: string;
+  blurb: string;
+  nodes: readonly GraphNode[];
+  edges: readonly GraphEdge[];
+}): Chart {
+  const byId = new Map(input.nodes.map((n) => [n.id, n]));
   const degree = new Map<string, number>();
-  for (const edge of EDGES) {
+  for (const edge of input.edges) {
     degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
     degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
   }
-  return degree;
-})();
+  return { ...input, byId, degree };
+}
+
+export const STORY: Chart = indexChart({
+  id: "story",
+  kicker: "North Atlantic",
+  blurb: "Listening posts, ships, and the sounds between them.",
+  nodes: NODES,
+  edges: EDGES,
+});
+
+export const NODE_BY_ID: ReadonlyMap<string, GraphNode> = STORY.byId;
+export const DEGREE: ReadonlyMap<string, number> = STORY.degree;
 
 export type Tie = {
   edge: GraphEdge;
@@ -179,14 +209,14 @@ export type Tie = {
   outbound: boolean;
 };
 
-export function tiesOf(id: string): Tie[] {
+export function tiesOf(chart: Chart, id: string): Tie[] {
   const list: Tie[] = [];
-  for (const edge of EDGES) {
+  for (const edge of chart.edges) {
     if (edge.source === id) {
-      const other = NODE_BY_ID.get(edge.target);
+      const other = chart.byId.get(edge.target);
       if (other) list.push({ edge, other, outbound: true });
     } else if (edge.target === id) {
-      const other = NODE_BY_ID.get(edge.source);
+      const other = chart.byId.get(edge.source);
       if (other) list.push({ edge, other, outbound: false });
     }
   }
@@ -199,23 +229,26 @@ export type HitIndex = {
   edges: Set<string>;
 };
 
-export function searchChart(query: string): HitIndex | null {
+export function searchChart(chart: Chart, query: string): HitIndex | null {
   const q = query.trim().toLowerCase();
   if (!q) return null;
   const nodes = new Set<string>();
   const edges = new Set<string>();
-  for (const n of NODES) {
+  for (const n of chart.nodes) {
     const kindLabel = KIND_LABEL[n.kind].toLowerCase();
     const kindHit = q.length >= 3 && (n.kind.startsWith(q) || kindLabel.startsWith(q));
+    const factHit = n.facts.some((fact) => fact.k.toLowerCase().includes(q) || fact.v.toLowerCase().includes(q));
     if (
       kindHit ||
+      factHit ||
       n.label.toLowerCase().includes(q) ||
-      n.blurb.toLowerCase().includes(q)
+      n.blurb.toLowerCase().includes(q) ||
+      n.notes.toLowerCase().includes(q)
     ) {
       nodes.add(n.id);
     }
   }
-  for (const edge of EDGES) {
+  for (const edge of chart.edges) {
     if (edge.label.toLowerCase().includes(q)) {
       edges.add(edge.id);
       nodes.add(edge.source);

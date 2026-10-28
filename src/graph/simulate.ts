@@ -1,4 +1,4 @@
-import { DEGREE, EDGES, NODES, type Kind } from "@/graph/data";
+import { type Chart, type Kind } from "@/graph/data";
 
 export const ALPHA_MIN = 0.02;
 
@@ -49,22 +49,45 @@ const SECTOR: Record<Kind, number> = {
   craft: 1.15,
   signal: 2.75,
   person: 4.35,
+  net: -0.2,
+  host: 1.35,
+  port: 2.7,
+  soft: 4.2,
 };
 
-export function createSim(): Sim {
+export function createSim(chart: Chart): Sim {
   const rand = mulberry32(11);
-  const seen: Record<Kind, number> = { post: 0, craft: 0, signal: 0, person: 0 };
-  const totals: Record<Kind, number> = { post: 0, craft: 0, signal: 0, person: 0 };
-  for (const n of NODES) totals[n.kind] += 1;
+  const seen: Record<Kind, number> = {
+    post: 0,
+    craft: 0,
+    signal: 0,
+    person: 0,
+    net: 0,
+    host: 0,
+    port: 0,
+    soft: 0,
+  };
+  const totals: Record<Kind, number> = {
+    post: 0,
+    craft: 0,
+    signal: 0,
+    person: 0,
+    net: 0,
+    host: 0,
+    port: 0,
+    soft: 0,
+  };
+  for (const n of chart.nodes) totals[n.kind] += 1;
 
-  const index = new Map(NODES.map((n, i) => [n.id, i]));
-  const nodes: SimNode[] = NODES.map((n) => {
+  const index = new Map(chart.nodes.map((n, i) => [n.id, i]));
+  const crowd = chart.nodes.length > 70;
+  const nodes: SimNode[] = chart.nodes.map((n) => {
     const i = seen[n.kind];
     seen[n.kind] = i + 1;
     const count = Math.max(1, totals[n.kind]);
-    const ang = SECTOR[n.kind] + (i / count) * 1.2;
-    const rad = 170 + (i % 4) * 48;
-    const deg = DEGREE.get(n.id) ?? 1;
+    const ang = SECTOR[n.kind] + (i / count) * (crowd ? 1 : 1.2);
+    const rad = crowd ? 210 + Math.sqrt(chart.nodes.length) * 14 + (i % 6) * 30 : 170 + (i % 4) * 48;
+    const deg = chart.degree.get(n.id) ?? 1;
     return {
       id: n.id,
       kind: n.kind,
@@ -72,23 +95,26 @@ export function createSim(): Sim {
       y: Math.sin(ang) * rad + (rand() - 0.5) * 18,
       vx: 0,
       vy: 0,
-      r: 7.5 + Math.sqrt(deg) * 2.5,
+      r: (crowd ? 5.5 : 7.5) + Math.sqrt(deg) * (crowd ? 1.7 : 2.5),
       fixed: false,
     };
   });
 
-  const links: SimLink[] = EDGES.map((edge) => {
+  const near = crowd ? 62 : 78;
+  const far = crowd ? 96 : 132;
+  const links: SimLink[] = chart.edges.map((edge) => {
     const source = index.get(edge.source);
     const target = index.get(edge.target);
     if (source === undefined || target === undefined) {
       throw new Error(`Missing endpoint ${edge.id}`);
     }
     const same = nodes[source].kind === nodes[target].kind;
-    return { source, target, rest: same ? 78 : 132 };
+    return { source, target, rest: same ? near : far };
   });
 
   const sim: Sim = { nodes, links, alpha: 1, frozen: false };
-  for (let i = 0; i < 120; i += 1) step(sim);
+  const warmup = chart.nodes.length > 220 ? 20 : chart.nodes.length > 90 ? 48 : 120;
+  for (let i = 0; i < warmup; i += 1) step(sim);
   return sim;
 }
 
