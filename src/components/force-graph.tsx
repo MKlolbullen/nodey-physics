@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
-import { EDGES, NODE_BY_ID, searchChart, type HitIndex, type Kind } from "@/graph/data";
+import { type Chart, searchChart, type HitIndex, type Kind } from "@/graph/data";
 import { ALPHA_MIN, createSim, reheat, step, type Sim, type SimNode } from "@/graph/simulate";
 
 export type GraphPhase = "live" | "settled" | "frozen";
@@ -12,6 +12,7 @@ export type ForceGraphHandle = {
 };
 
 type Props = {
+  chart: Chart;
   query: string;
   selectedId: string | null;
   frozen: boolean;
@@ -44,6 +45,7 @@ const FALLBACK: Palette = {
 type Box = { x: number; y: number; w: number; h: number };
 
 type ChartState = {
+  chart: Chart;
   sim: Sim;
   byId: Map<string, SimNode>;
   cam: Cam;
@@ -88,9 +90,9 @@ function ease(t: number) {
 }
 
 function kindColor(kind: Kind, pal: Palette) {
-  if (kind === "post") return pal.brass;
-  if (kind === "craft") return pal.sage;
-  if (kind === "person") return pal.clay;
+  if (kind === "post" || kind === "net") return pal.brass;
+  if (kind === "craft" || kind === "host") return pal.sage;
+  if (kind === "person" || kind === "soft") return pal.clay;
   return pal.bone;
 }
 
@@ -119,9 +121,10 @@ function readPalette(): Palette {
   };
 }
 
-function createChartState(): ChartState {
-  const sim = createSim();
+function createChartState(chart: Chart): ChartState {
+  const sim = createSim(chart);
   return {
+    chart,
     sim,
     byId: new Map(sim.nodes.map((n) => [n.id, n])),
     cam: { x: 0, y: 0, k: 1 },
@@ -182,7 +185,7 @@ function overlap(a: Box, b: Box) {
 
 function visibleCenter(st: ChartState) {
   const narrow = st.w < 768;
-  const padT = narrow ? 148 : 96;
+  const padT = narrow ? 228 : 96;
   const padB = narrow ? 96 : 84;
   return { x: st.w / 2, y: (padT + (st.h - padB)) / 2, padT, padB };
 }
@@ -266,10 +269,10 @@ function resize(st: ChartState) {
 function syncHits(st: ChartState) {
   if (st.queryKey === st.query) return;
   st.queryKey = st.query;
-  st.hits = searchChart(st.query);
+  st.hits = searchChart(st.chart, st.query);
 }
 
-function drawShape(ctx: CanvasRenderingContext2D, n: SimNode, k: number) {
+function drawShape(ctx: CanvasRenderingContext2D, n: SimNode) {
   const r = n.r;
   ctx.beginPath();
   if (n.kind === "craft") {
@@ -280,13 +283,30 @@ function drawShape(ctx: CanvasRenderingContext2D, n: SimNode, k: number) {
     ctx.closePath();
     return;
   }
+  if (n.kind === "soft") {
+    ctx.moveTo(n.x, n.y - r);
+    ctx.lineTo(n.x + r * 0.9, n.y + r * 0.72);
+    ctx.lineTo(n.x - r * 0.9, n.y + r * 0.72);
+    ctx.closePath();
+    return;
+  }
   if (n.kind === "post") {
     const s = r * 0.92;
     ctx.rect(n.x - s, n.y - s, s * 2, s * 2);
     return;
   }
-  ctx.arc(n.x, n.y, n.kind === "signal" ? r : r * 0.92, 0, Math.PI * 2);
-  void k;
+  if (n.kind === "net") {
+    for (let i = 0; i < 6; i += 1) {
+      const a = (Math.PI / 3) * i - Math.PI / 6;
+      const x = n.x + Math.cos(a) * r;
+      const y = n.y + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    return;
+  }
+  ctx.arc(n.x, n.y, n.kind === "signal" || n.kind === "port" ? r : r * 0.92, 0, Math.PI * 2);
 }
 
 function draw(st: ChartState) {
@@ -325,8 +345,8 @@ function draw(st: ChartState) {
 
   type EdgeDraw = { a: SimNode; b: SimNode; id: string; label: string; rank: 0 | 1 | 2 };
   const edges: EdgeDraw[] = [];
-  for (let i = 0; i < EDGES.length; i += 1) {
-    const edge = EDGES[i];
+  for (let i = 0; i < st.chart.edges.length; i += 1) {
+    const edge = st.chart.edges[i];
     const a = st.byId.get(edge.source);
     const b = st.byId.get(edge.target);
     if (!a || !b) continue;
@@ -371,8 +391,8 @@ function draw(st: ChartState) {
     const alpha = nodeAlpha(n);
     const color = kindColor(n.kind, pal);
     ctx.globalAlpha = alpha;
-    drawShape(ctx, n, k);
-    if (n.kind === "signal") {
+    drawShape(ctx, n);
+    if (n.kind === "signal" || n.kind === "port") {
       ctx.strokeStyle = color;
       ctx.lineWidth = 1.6 / k;
       ctx.stroke();
@@ -426,9 +446,9 @@ function draw(st: ChartState) {
     const matched = Boolean(hits?.nodes.has(n.id));
     if (hits && !matched && !selected && !hover) continue;
     if (!hits && !labelsOn && !selected && !hover) continue;
-    const datum = NODE_BY_ID.get(n.id);
+    const datum = st.chart.byId.get(n.id);
     if (!datum) continue;
-    const text = datum.label;
+    const text = datum.label.length > 32 ? `${datum.label.slice(0, 30)}…` : datum.label;
     const width = ctx.measureText(text).width;
     const box: Box = { x: sx, y: sy + sr + 12, w: width, h: 14 };
     const pri = selected ? 100 : hover ? 80 : matched ? 70 : 30;
@@ -545,11 +565,11 @@ function applyPinch(st: ChartState) {
 }
 
 export const ForceGraph = forwardRef<ForceGraphHandle, Props>(function ForceGraph(
-  { query, selectedId, frozen, onSelect, onPhase },
+  { chart, query, selectedId, frozen, onSelect, onPhase },
   ref,
 ) {
   const stRef = useRef<ChartState | null>(null);
-  if (stRef.current === null) stRef.current = createChartState();
+  if (stRef.current === null) stRef.current = createChartState(chart);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const st = stRef.current;
   st.query = query;
