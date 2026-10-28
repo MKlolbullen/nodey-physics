@@ -740,10 +740,212 @@ function looksXml(text: string) {
   return /<nmaprun[\s>]/i.test(text) || (/<host[\s>]/i.test(text) && /<address[\s>]/i.test(text));
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function textOf(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function pathnameOf(url: string) {
+  try {
+    return new URL(url).pathname || "/";
+  } catch {
+    return "";
+  }
+}
+
+function fileLabelOf(url: string) {
+  const base = pathnameOf(url).split("/").filter(Boolean).pop() || url;
+  return base.length > 56 ? `${base.slice(0, 53)}…` : base;
+}
+
+function portFromUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.port) return Number(parsed.port);
+    if (parsed.protocol === "https:") return 443;
+    if (parsed.protocol === "http:") return 80;
+  } catch {
+    return 0;
+  }
+  return 0;
+}
+
+function addFact(node: GraphNode, k: string, v: string) {
+  const facts = node.facts as { k: string; v: string }[];
+  if (!facts.some((fact) => fact.k === k && fact.v === v)) facts.push({ k, v });
+}
+
+function attachMeridian(base: ScanImport, data: Record<string, unknown>): ScanImport {
+  const nodes: GraphNode[] = base.chart.nodes.map((node) => ({ ...node, facts: [...node.facts] }));
+  const edges: GraphEdge[] = base.chart.edges.map((edge) => ({ ...edge }));
+  const notices = base.notice ? [base.notice] : [];
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  let edgeId = edges.length;
+  const link = (source: string, target: string, label: string) => {
+    if (!byId.has(source) || !byId.has(target)) return;
+    if (edges.some((edge) => edge.source === source && edge.target === target && edge.label === label)) return;
+    edges.push({ id: `e${edgeId}`, source, target, label });
+    edgeId += 1;
+  };
+
+  const crawled = new Map<string, string[]>();
+  const titles = new Map<string, string>();
+  for (const page of Array.isArray(data.pages) ? data.pages.filter(isRecord) : []) {
+    const ip = textOf(page.ip).toLowerCase();
+    const path = pathnameOf(textOf(page.url));
+    if (ip && path) {
+      const list = crawled.get(ip) ?? [];
+      if (!list.includes(path)) list.push(path);
+      crawled.set(ip, list);
+    }
+    const title = textOf(page.title);
+    if (ip && title && !titles.has(ip)) titles.set(ip, title);
+  }
+  for (const [ip, paths] of crawled) {
+    const host = byId.get(`host:${ip}`);
+    if (!host) continue;
+    const line = `Crawled ${paths.slice(0, 12).join("  ")}`;
+    host.notes = host.notes ? `${host.notes}\n${line}` : line;
+    const title = titles.get(ip);
+    if (title) addFact(host, "Title", title.slice(0, 80));
+  }
+
+  for (const rec of Array.isArray(data.dns) ? data.dns.filter(isRecord) : []) {
+    const type = textOf(rec.type).toUpperCase();
+    const name = textOf(rec.name);
+    const value = textOf(rec.value);
+    if (!type || !name || !value) continue;
+    const host =
+      type === "PTR" && isIp(name)
+        ? byId.get(`host:${stripZone(name).toLowerCase()}`)
+        : (type === "A" || type === "AAAA") && isIp(value)
+          ? byId.get(`host:${stripZone(value).toLowerCase()}`)
+          : undefined;
+    if (!host || host.facts.length > 12) continue;
+    if (type === "PTR") addFact(host, "PTR", value);
+    if ((type === "A" || type === "AAAA") && host.label !== name) addFact(host, type, name);
+  }
+
+  const groups = new Map<string, { label: string; kind: string; hosts: Set<string>; sources: Set<string>; url: string }>();
+  let skipped = 0;
+  const files = (Array.isArray(data.files) ? data.files.filter(isRecord) : [])
+    .map((file) => ({
+      url: textOf(file.url),
+      kind: textOf(file.kind).toLowerCase(),
+      status: Number(file.status),
+      ip: textOf(file.ip).toLowerCase(),
+    }))
+    .filter((file) => file.url && isIp(file.ip) && file.status >= 200 && file.status < 400);
+  for (const file of files) {
+    const key = pathnameOf(file.url).toLowerCase();
+    if (!key) continue;
+    let group = groups.get(key);
+    if (!group) {
+      if (groups.size >= 80) {
+        skipped += 1;
+        continue;
+      }
+      group = {
+        label: fileLabelOf(file.url),
+        kind: file.kind || "file",
+        hosts: new Set(),
+        sources: new Set(),
+        url: file.url,
+      };
+      groups.set(key, group);
+    }
+    group.hosts.add(file.ip);
+    const port = portFromUrl(file.url);
+    const portId = port ? `port:${file.ip}:tcp:${port}` : "";
+    const source = byId.has(portId) ? portId : `host:${file.ip}`;
+    if (byId.has(source)) group.sources.add(source);
+  }
+  if (skipped) notices.push(`${skipped} more script files were left off the chart.`);
+
+  for (const [key, group] of groups) {
+    if (!group.sources.size) continue;
+    const id = `file:${key}`;
+    const count = group.hosts.size;
+    const node: GraphNode = {
+      id,
+      label: group.label,
+      kind: "file",
+      blurb: count === 1 ? "Served by 1 host." : `Served by ${count} hosts.`,
+      notes: group.url,
+      facts: [
+        { k: "Kind", v: group.kind },
+        { k: "Hosts", v: String(count) },
+      ],
+    };
+    nodes.push(node);
+    byId.set(id, node);
+    for (const source of group.sources) link(source, id, "serves");
+  }
+
+  return {
+    chart: indexChart({
+      id: base.chart.id,
+      kicker: base.chart.kicker,
+      blurb: nodes.some((node) => node.kind === "file")
+        ? "A network holds its hosts, a host exposes ports, those ports run software, and web ports serve the script files they share."
+        : base.chart.blurb,
+      nodes,
+      edges,
+    }),
+    notice: notices.length ? notices.join(" ") : null,
+  };
+}
+
+function asMeridian(raw: string, filename: string): ScanImport | null {
+  if (!raw.startsWith("{")) return null;
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!isRecord(data) || data.meridian !== 1 || !Array.isArray(data.hosts)) return null;
+  const hosts: RawHost[] = [];
+  for (const item of data.hosts) {
+    if (!isRecord(item)) continue;
+    const ip = textOf(item.ip);
+    const names = Array.isArray(item.names) ? item.names.map(textOf).filter(Boolean) : [];
+    const host = emptyHost(isIp(ip) ? stripZone(ip) : "", names[0] ?? "");
+    if (!host.ip && !host.name) continue;
+    host.up = item.up !== false;
+    if (Array.isArray(item.ports)) {
+      for (const port of item.ports) {
+        if (!isRecord(port)) continue;
+        addPort(host, {
+          port: Number(port.port),
+          proto: textOf(port.proto).toLowerCase() || "tcp",
+          state: textOf(port.state) || "open",
+          service: cleanSvc(textOf(port.service)),
+          product: textOf(port.product),
+          version: textOf(port.version),
+          extra: "",
+        });
+      }
+    }
+    if (host.up || host.ports.length) hosts.push(host);
+  }
+  if (!hosts.length) throw new ScanParseError("No up hosts in that scan.");
+  return attachMeridian(toChart(hosts, filename), data);
+}
+
 export function parseScan(text: string, filename: string): ScanImport {
   const raw = text.replace(/^\uFEFF/, "").trim();
   if (!raw) throw new ScanParseError("That file is empty.");
   const ext = (filename.match(/\.([a-z0-9]+)$/i)?.[1] ?? "").toLowerCase();
+
+  if (ext === "json" || raw.startsWith("{")) {
+    const imported = asMeridian(raw, filename);
+    if (imported) return imported;
+    if (ext === "json") throw new ScanParseError("That JSON is not a Meridian scan.");
+  }
 
   if (ext === "xml" || looksXml(raw)) {
     const hosts = parseXml(raw);
@@ -769,7 +971,7 @@ export function parseScan(text: string, filename: string): ScanImport {
   const listed = parseIpList(raw);
   if (listed.length) return toChart(listed, filename);
   throw new ScanParseError(
-    "No hosts found. Use Nmap XML (-oX), normal output (-oN), grepable (-oG), or a CSV with an IP column.",
+    "No hosts found. Use Nmap XML (-oX), normal output (-oN), grepable (-oG), a CSV with an IP column, or a Meridian scan JSON.",
   );
 }
 

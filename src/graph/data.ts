@@ -1,4 +1,4 @@
-export type Kind = "post" | "craft" | "signal" | "person" | "net" | "host" | "port" | "soft";
+export type Kind = "post" | "craft" | "signal" | "person" | "net" | "host" | "port" | "soft" | "file";
 
 export type GraphNode = {
   id: string;
@@ -25,6 +25,7 @@ export const KIND_LABEL: Record<Kind, string> = {
   host: "Hosts",
   port: "Ports",
   soft: "Software",
+  file: "Files",
 };
 
 function node(

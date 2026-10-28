@@ -53,6 +53,7 @@ const SECTOR: Record<Kind, number> = {
   host: 1.35,
   port: 2.7,
   soft: 4.2,
+  file: 5.4,
 };
 
 export function createSim(chart: Chart): Sim {
@@ -66,6 +67,7 @@ export function createSim(chart: Chart): Sim {
     host: 0,
     port: 0,
     soft: 0,
+    file: 0,
   };
   const totals: Record<Kind, number> = {
     post: 0,
@@ -76,6 +78,7 @@ export function createSim(chart: Chart): Sim {
     host: 0,
     port: 0,
     soft: 0,
+    file: 0,
   };
   for (const n of chart.nodes) totals[n.kind] += 1;
 

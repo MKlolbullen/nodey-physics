@@ -122,6 +122,46 @@ describe("parseScan", () => {
     assert.ok(chart.nodes.some((node) => node.label === "ssh"));
   });
 
+  it("reads a meridian scanner report and shares script files", () => {
+    const report = {
+      meridian: 1,
+      target: "lab",
+      hosts: [
+        {
+          ip: "10.0.0.5",
+          names: ["lab"],
+          up: true,
+          ports: [{ port: 80, proto: "tcp", state: "open", service: "http", product: "nginx", version: "1.24.0" }],
+        },
+        {
+          ip: "10.0.0.6",
+          names: ["files.lab"],
+          up: true,
+          ports: [{ port: 80, proto: "tcp", state: "open", service: "http", product: "nginx", version: "1.24.0" }],
+        },
+      ],
+      dns: [{ name: "10.0.0.5", type: "PTR", value: "lab" }],
+      pages: [{ url: "http://lab/", status: 200, ip: "10.0.0.5", title: "Lab" }],
+      files: [
+        { url: "http://lab/static/app.chunk.js", kind: "chunk", status: 200, ip: "10.0.0.5" },
+        { url: "http://files.lab/static/app.chunk.js", kind: "chunk", status: 200, ip: "10.0.0.6" },
+        { url: "http://lab/missing.js", kind: "js", status: 404, ip: "10.0.0.5" },
+      ],
+    };
+    const { chart } = parseScan(JSON.stringify(report), "lab.json");
+    const file = chart.nodes.find((node) => node.kind === "file");
+    assert.ok(file);
+    assert.equal(file.label, "app.chunk.js");
+    assert.equal(file.blurb, "Served by 2 hosts.");
+    assert.equal(chart.degree.get(file.id), 2);
+    assert.ok(chart.edges.some((edge) => edge.target === file.id && edge.label === "serves"));
+    assert.equal(chart.nodes.filter((node) => node.kind === "file").length, 1);
+    assert.equal(chart.byId.get("host:10.0.0.5")?.facts.find((fact) => fact.k === "Title")?.v, "Lab");
+    assert.equal(chart.byId.get("host:10.0.0.5")?.facts.find((fact) => fact.k === "PTR")?.v, "lab");
+    assert.ok(chart.byId.get("host:10.0.0.5")?.notes.includes("Crawled /"));
+    assert.ok(chart.nodes.some((node) => node.label === "nginx 1.24.0"));
+  });
+
   it("rejects empty and unrecognized files", () => {
     assert.throws(() => parseScan("   ", "x.nmap"), ScanParseError);
     assert.throws(() => parseScan("this is a letter, not a scan", "notes.txt"), ScanParseError);
