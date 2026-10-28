@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Meridian",
+      "hasCanvas": true,
+      "bodyTextLen": 168,
+      "bodyTextHash": "fbf1d5958c032b8eb305feb793fc39542df1df154a47af7e48bb72b74475a6f2",
+      "bodyTextPrefix": "NORTH ATLANTIC Meridian Live Listening posts, ships, and the sou",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Meridian",
+      "hasCanvas": true,
+      "bodyTextLen": 115,
+      "bodyTextHash": "7864f709946d46757ba5b8346dcd52ce400219884b9e77f2240c74241334f595",
+      "bodyTextPrefix": "NORTH ATLANTIC Meridian Live Search nodes and ties 42 nodes · 63",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}

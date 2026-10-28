@@ -1,0 +1,71 @@
+@import "tailwindcss";
+@import "@fontsource/outfit/latin-400.css";
+@import "@fontsource/outfit/latin-500.css";
+@import "@fontsource/outfit/latin-600.css";
+@import "@fontsource/fraunces/latin-500.css";
+@import "@fontsource/fraunces/latin-600.css";
+
+@theme {
+  --font-display: "Fraunces", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-sans: "Outfit", "Avenir Next", "Segoe UI", sans-serif;
+
+  --color-ink: #0c1210;
+  --color-panel: #17211c;
+  --color-line: #2c3b33;
+  --color-bone: #e6efe6;
+  --color-mist: #93a399;
+  --color-brass: #e0a84a;
+  --color-sage: #7eae92;
+  --color-clay: #d08462;
+}
+
+@layer base {
+  html {
+    height: 100%;
+    background: var(--color-ink);
+    color: var(--color-bone);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: var(--color-ink);
+    color: var(--color-bone);
+    font-family: var(--font-sans);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+}
+
+/* Mobile sheet vs. a full-height desktop column. */
+.inspector-scroll {
+  max-height: 16rem;
+}
+
+@media (min-width: 768px) {
+  .inspector-scroll {
+    max-height: calc(100dvh - 1.5rem);
+  }
+}
+
+.chart-vignette {
+  background: radial-gradient(ellipse at 50% 46%, transparent 46%, var(--color-ink) 94%);
+  opacity: 0.5;
+  pointer-events: none;
+}
