@@ -1,102 +1,165 @@
+<div align="center">
+
 # Meridian
+### See the relationships behind your network scan.
 
-A force-directed chart of a network. Hosts, addresses, open ports, services, versions, and operating systems are nodes. A tie is a relationship, not a row in a spreadsheet: a prefix holds its hosts, a host exposes ports, and every port that runs the same build meets on one software node.
+**A local-first, interactive network relationship graph for hosts, ports, services, software and discovered files.**
 
-The file never leaves the tab. Import reads it locally.
+[Get started](#quick-start) · [Import formats](#import-existing-scan-results) · [Local scanner](#optional-local-scanner) · [Graph semantics](#how-the-graph-works)
 
-![Lab scan drawn as a relationship chart. One /24 holds five hosts. Open ports hang off each host and meet at shared software such as nginx 1.24.0 and OpenSSH 8.9p1. Linux 5.15 is one operating-system node for two hosts.](docs/images/lab-scan.png)
+</div>
 
-The lab scan above is one `/24`, five hosts, and the open ports from a normal Nmap report. `10.10.10.0/24` holds every host. `gateway.lab`, `files.lab`, and `jump.lab` all run `nginx 1.24.0`, so that version is a single node with three `runs` ties. `OpenSSH 8.9p1` and `OpenSSH 9.6p1` stay apart. `Linux 5.15` is shared by the two hosts whose OS match said so. `10.10.10.50` is up and has nothing open, so its only tie is the prefix.
+![Example Meridian graph generated from a lab scan](docs/images/lab-scan.png)
 
-Searching `nginx` keeps that hub and fades everything else.
+## Why Meridian?
 
-![Search for nginx. The shared nginx 1.24.0 node and the three ports that run it stay lit. The rest of the scan is dimmed.](docs/images/shared-software.png)
+A scan can tell you which ports are open. It is less good at showing **what your hosts have in common**.
 
-The same chart on a phone. Drag a node, drag empty space to pan, pinch to zoom.
+Meridian turns the output of familiar reconnaissance tools into a navigable graph: a network contains hosts, hosts expose ports, ports run software, and the same software version can connect several hosts. Instead of reading another enormous results table, you can explore the connections.
 
-![The lab scan on a narrow screen. The file name, counts, and kind filters sit above the chart.](docs/images/lab-scan-phone.png)
+This is a small experimental visualization project, **not** a vulnerability scanner or a replacement for Nmap, Burp Suite or a full asset-management platform.
 
-## Ties
+### What you can do
 
-| From | Verb | To | Meaning |
-|---|---|---|---|
-| Network | holds | Host | Same IPv4 `/24`, or the same IPv6 prefix |
-| Host | exposes | Port | An open port, labeled `22/tcp` |
-| Port | runs | Software | Product and version, or the service name when the banner is thin |
-| Host | runs | Software | Operating system, kept separate from the service of the same name |
-| Port | serves | File | A `.js`, `.json`, `.map`, `.chunk`, or `.ts` file the crawl found. The same path on two hosts is one node |
+- Import existing scan results as **Nmap XML / normal / grepable**, **Masscan XML**, **CSV**, plain **IP lists**, or Meridian JSON.
+- Navigate a force-directed graph; pan, zoom, drag, search and filter by node type.
+- Spot shared services or versions across hosts without treating every repeated banner as a separate piece of software.
+- Visualize script/data-file paths captured by Meridian's scanner.
+- Use the included **Sample** lab dataset to explore the interface without touching a network.
+- Optionally run a small local Python scanner and import its JSON output.
 
-Closed and filtered ports are not drawn. A down host with no open port is left out. Two banners that differ only by a package suffix (`OpenSSH 8.9p1 Ubuntu 4ubuntu0.1` and `…4ubuntu0.5`) collapse to `OpenSSH 8.9p1`.
+**Privacy:** imported files are parsed locally in the browser; the import flow does not upload them to a scanning service. The optional scanner does send traffic to the targets you specify. The web application has other dependencies and infrastructure; do not interpret local file parsing as a blanket guarantee that all app traffic stays offline.
 
-On a large file the chart keeps the 120 hosts with the most open ports. Past 100 open ports, the ports stay on the host card and the software nodes remain, so the shared builds are still visible.
+## Screenshots
 
-## What each kind carries
+| Full scan | Shared software search |
+| --- | --- |
+| ![Graph showing a sample lab network](docs/images/lab-scan.png) | ![Search for nginx highlights relationships](docs/images/shared-software.png) |
 
-| Kind | Drawn as | Facts |
-|---|---|---|
-| Network | Hexagon | Prefix, host count |
-| Host | Disc | Address, latency, MAC and vendor, OS, hop count, open-port count, PTR, page title |
-| Port | Ring | State, service name, banner |
-| Software | Triangle | `OS` or `Software`, and how many hosts share it |
-| File | Page | Extension, and how many hosts serve that path |
+![Meridian on a narrow screen](docs/images/lab-scan-phone.png)
 
-A host is labeled with its name when the scan has one, and the address is a fact, so searching the IP still finds it. The legend filters are **Networks**, **Hosts**, **Ports**, **Software**, and, after a scanner report, **Files**.
+## Quick start
 
-## What import reads today
+**Requirements:** Node.js and npm (use a recent compatible Node.js release), plus Python 3 if you want to run the optional scanner.
 
-| File | Typical source |
-|---|---|
-| Nmap XML | `nmap -oX` |
-| Nmap normal | `nmap -oN`, usually `.nmap` |
-| Nmap grepable | `nmap -oG`, usually `.gnmap` |
-| Masscan XML | Same host / address / port shape as Nmap XML |
-| CSV | A header with `ip` or `address`, plus `port`, `protocol`, `state`, `service`, `product`, `version`, `os`, `hostname`, `mac` when you have them. Semicolons and tabs are fine |
-| IP list | One address per line |
-| Meridian JSON | `scanner/meridian.py`. This is the report that also carries DNS, crawled pages, and script files |
+```bash
+git clone https://github.com/MKlolbullen/nodey-physics.git
+cd nodey-physics
+npm ci
+npm run dev
+```
 
-**Import** or drop the file on the chart. **Sample** loads the lab scan in the pictures. **Story** returns to the original chart. Nothing is uploaded.
+The development script starts Vite on **port 8080**. Open the URL shown in the terminal, choose **Sample**, or import your own scan file.
 
-## Scanner
+The repository also includes application/server and database-related functionality. Depending on your environment, those paths may require additional configuration; the instructions above describe the development entry point, not a claim of zero-configuration production deployment.
+
+Useful repository commands:
+
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
+
+Note: `npm run build` also runs database migrations. Review environment/database configuration before invoking it outside development.
+
+## Import existing scan results
+
+Use **Import**, or drag and drop a supported file into the graph.
+
+| Format | Typical producer | Notes |
+| --- | --- | --- |
+| Nmap XML | `nmap -oX scan.xml ...` | Hosts, ports, services and available OS details |
+| Nmap normal | `nmap -oN scan.nmap ...` | Human-readable Nmap output |
+| Nmap grepable | `nmap -oG scan.gnmap ...` | Legacy line-oriented format |
+| Masscan XML | Masscan XML export | Host/port data with compatible XML structure |
+| CSV | Other inventory tools | Headers such as `ip`/`address`, `port`, `protocol`, `state`, `service`, `product`, `version`, `os`, `hostname`, `mac`; semicolon and tab delimiters supported |
+| IP list | Any text file | One IP address per line |
+| Meridian JSON | Included scanner | Additional DNS, crawled pages and file relationships |
+
+You can start with an existing report—**no new target scan is needed** just to draw the graph.
+
+## How the graph works
 
 ```text
+Network ──holds────> Host ──exposes──> Port ──runs──> Software
+                       │                 │
+                       └──runs───────────> OS
+                                         └──serves──> File
+```
+
+| Relationship | Meaning |
+| --- | --- |
+| Network → Host | Host belongs to the same IPv4 /24 or IPv6 prefix |
+| Host → Port | Open port and transport, e.g. `443/tcp` |
+| Port → Software | Service/product/version, shared across matching ports |
+| Host → Software | Detected operating system |
+| Port → File | Discovered `.js`, `.json`, `.map`, `.chunk` or `.ts` path |
+
+**Node shapes:** networks are hexagons, hosts discs, ports rings, software triangles and files pages. Click a node to inspect available facts such as address, banner, OS, latency, page title or open-port count.
+
+Meridian collapses some OS/package-specific banner suffixes to a common upstream product version for visualization. This makes shared software easier to see, but **is not proof that two hosts have identical patch levels**.
+
+### Boundaries and performance
+
+- Closed and filtered ports aren't displayed.
+- Down hosts with no open ports are excluded.
+- Large imports prioritize up to **120 hosts** with the most open ports.
+- Above **100 open ports**, port details stay on the host card while software relationships remain visible.
+- A file path served by more than one host can become a shared node.
+
+## Optional local scanner
+
+The Python scanner collects a modest amount of network and HTTP metadata and writes import-ready artifacts:
+
+```bash
 python3 scanner/meridian.py
 ```
 
-It asks for one target. A CIDR (`10.0.0.0/24`), a range (`10.0.0.1-10.0.0.40` or `10.0.0.1-40`), or a hostname. A target on the command line runs once. With no argument it keeps asking.
+Enter a **hostname**, **CIDR**, or **IP range** when prompted. The script also accepts a target argument for a one-shot run.
 
-Then, in order, and not before the previous step finishes:
+It processes the target in sequence:
 
-1. **Host scan.** TCP connect to a short port list. An open port marks the host up and keeps the banner (`nginx/1.24.0`, `OpenSSH_8.9p1`).
-2. **DNS.** PTR for live addresses, then A, AAAA, CNAME, MX, NS, and TXT for a hostname, then a short label list (`www`, `api`, `vpn`, …) under that name only. A range does not get subdomain guesses. Wildcard DNS stops the list.
-3. **Crawling.** HTTP and HTTPS on the ports from step 1. Same host and port only, two hops, twenty pages per origin.
-4. **Script and data files.** From those pages, then from the files themselves: `.js`, `.json`, `.map`, `.chunk`, `.ts`. A source map named by a script is fetched. Nothing off the host that was crawled.
+1. TCP-connect discovery over a small predefined port set, retaining available banners.
+2. PTR resolution for live addresses; hostname DNS lookups and a short subdomain-label list when a domain was supplied.
+3. Bounded same-host, same-port HTTP(S) crawling (up to two hops and 20 pages per origin).
+4. Discovery of referenced script/data files and source maps.
 
-It writes `meridian-<target>.json` and `.csv` in the current directory. Drop the JSON on the chart. The CSV is the host and port table, which the chart can also import. The cap is 512 addresses. Link-local and metadata addresses are skipped. The scanner does not call Shodan or the other APIs, and it does not leave the machine.
+Output is written to the current directory as `meridian-<target>.json` and `.csv`. Import the JSON for the richest relationship graph.
 
-Only point it at hosts you are allowed to test.
+**Scanner guardrails:** a 512-address cap, bounded crawling, and skipping link-local/metadata addresses. These are operational limits, not a substitute for checking authorization and target scope. The scanner runs locally but sends network requests; it does not query Shodan/Censys/VirusTotal/FOFA automatically.
 
-## Tools that complement the same graph
+Only scan systems you own or have explicit permission to assess.
 
-ProjectDiscovery output and the passive APIs do not need a second drawing. They add facts and ties onto the nodes a scan already has. A new CVE is not a new kind of picture. It is another shared node, the way two hosts already share one nginx.
+## Other tool outputs
 
-| Source | What it adds | Where it lands |
-|---|---|---|
-| [dnsx](https://github.com/projectdiscovery/dnsx) | A, AAAA, CNAME, NS, PTR | Address and name on the host. A CNAME is a tie to another name. A new A record can move a host onto a prefix |
-| [httpx](https://github.com/projectdiscovery/httpx) | Status, title, webserver, tech, TLS, CDN, hashes | Tech and `webserver` become software the port runs (`nginx 1.24.0`, `PHP 8.3`). Title and status are host or port facts |
-| [tlsx](https://github.com/projectdiscovery/tlsx) | Version, cipher, SAN, issuer, expiry, JARM | The certificate subject is a fact on `443/tcp`. A shared JARM or issuer is a software-style hub: many hosts, one node |
-| [katana](https://github.com/projectdiscovery/katana) | Crawled URLs, parameters, JS files | Endpoints hang off the host that served them. A repeated path across hosts is one node they all expose |
-| [cariddi](https://github.com/edoardottt/cariddi) | Endpoints, secrets, leaked files | A secret or file is a node the host holds. The same leak on two hosts is one node, not two rows |
-| [Shodan](https://www.shodan.io/) | Banners, CPE, tags, vulns, org, ASN | Banner and CPE refine the software node. A CVE Shodan already attached to the banner is a vulnerability node that software has |
-| [Censys](https://search.censys.io/) | Services, software, certificates, location | Same as a banner: service plus version runs on that port. A certificate seen on many hosts is one node |
-| [VirusTotal](https://www.virustotal.com/) | Resolutions, communicating files, detections | A resolution is another address the name holds. A malicious file tied to several hosts is one node they share |
-| [FOFA](https://fofa.info/) | Query hits: ip, port, protocol, product, version | One hit is a host, a port, and a software node. The product string is the hub |
+Meridian is built around a **shared graph vocabulary**. Results from tools such as [dnsx](https://github.com/projectdiscovery/dnsx), [httpx](https://github.com/projectdiscovery/httpx), [tlsx](https://github.com/projectdiscovery/tlsx), and [katana](https://github.com/projectdiscovery/katana) could enrich the same host, port, software and file entities.
 
-Vulnerability data follows the software, not a private list per host. `CVE-2024-xxxx` on `nginx 1.24.0` is one node. Every port that runs that build has it, which is the relationship the chart is for. Nuclei findings work the same way when the template names a product or CVE: the finding is shared, the affected port is the tie.
+**Current limitation:** those tools and third-party intelligence APIs are *not* direct live integrations in this project. Normalize their output to one of the supported formats before importing; the graph will only represent fields the parser actually recognizes. CVE/enrichment hubs are architectural ideas, not a claim of implemented vulnerability correlation.
 
-These sources are complements. The chart does not call Shodan, Censys, VirusTotal, or FOFA. Export or join their records into Nmap output or the CSV columns above and import that file. The hubs come out the same.
+## Development and validation
 
-```text
-prefix  --holds-->   host  --exposes-->  port  --runs-->  software
-                      |                     |                |
-                      +--runs--> os         +--serves--> file  +--has--> vulnerability
+The repository includes a scan parser test and Python scanner tests, alongside application checks:
+
+```bash
+npm run typecheck
+npm run lint
+npm test
+python3 -m unittest scanner.test_meridian
 ```
+
+No benchmark, production-hardening guarantee or independent security audit is claimed here.
+
+## Next ideas
+
+- Explicit graph entities for validated vulnerabilities and evidence links.
+- More structured input adapters for reconnaissance tool output.
+- Improved handling and aggregation of large scan datasets.
+- Stronger end-to-end tests for imports and scanner output.
+
+---
+
+**Meridian** is a small experiment in making scan results more useful by showing how the pieces connect.
+
+Built by [MKlolbullen](https://github.com/MKlolbullen).
